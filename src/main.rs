@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum Instruction {
     ChangePtr(i8),
     ChangeVal(i8),
@@ -9,16 +9,75 @@ enum Instruction {
 }
 
 fn main() {
-    let program = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++..+++.>>.<-.<.+++.------.--------.>>+.>++.";
+    let program = "+[,.-----------------------------------------------------------------]";
 
-    println!("Input: {}", &program);
+    println!("Input: {}\n", &program);
     let (ast, _unused) = generate_ast(&program, true);
-    println!("AST: {:?}", &ast);
+    println!("AST: {:?}\n", &ast);
     let optimized_ast:Vec<Instruction>  = optimize_ast(ast);
-    println!("Optimized AST: {:?}", &optimized_ast);
+    println!("Optimized AST: {:?}\n", &optimized_ast);
 
-    let generated_javascript = generate_javascript_from_ast(optimized_ast, true);
+    let generated_javascript = generate_javascript_from_ast(optimized_ast.clone(), true);
     println!("Javascript: {}", generated_javascript);
+
+    print!("Interpreter: ");
+    interpreter_from_ast(optimized_ast.clone());
+    println!();
+}
+
+fn interpreter_from_ast(ast: Vec<Instruction>){
+    use std::io::{stdin,stdout};
+
+    let data: [u8; 256] = [0; 256];
+    let ptr:u8 = 0;
+
+    fn recursive_interpret(ast: Vec<Instruction>, mut ptr:u8, mut data: [u8; 256], in_loop: bool) -> (u8, [u8; 256]) {
+        for instruction in &ast {
+            match &instruction {
+                Instruction::ChangePtr(val) => {
+                    if val >= &0 {
+                        ptr = ptr.wrapping_add(*val as u8);
+                    } else {
+                        ptr = ptr.wrapping_sub((-1 * *val) as u8);
+                    }
+                },
+                Instruction::ChangeVal(val) => {
+                    if val >= &0 {
+                        data[ptr as usize] = data[ptr as usize].wrapping_add(*val as u8);
+                    } else {
+                        data[ptr as usize] = data[ptr as usize].wrapping_sub((-1 * *val) as u8);
+                    }
+                },
+                Instruction::Loop(_instructions) =>{
+                    if let Instruction::Loop(instructions) = instruction {
+                       let output = recursive_interpret(instructions.to_vec(), 0, data, true);
+                        data = output.1;
+                    }
+                }
+                Instruction::Input => {
+                    let mut s=String::new();
+                    stdin().read_line(&mut s);
+                    data[ptr as usize] = match s.chars().nth(0) {
+                        Some(char)=> char as u8,
+                        None => 0
+                    }
+                },
+                Instruction::Print => {
+                    print!("{}", data[ptr as usize] as char);
+                },
+                Instruction::Input => {},
+                _ => {}
+            }
+        }
+
+        return if in_loop && data[ptr as usize] > 0 {
+            recursive_interpret(ast, 0, data, true)
+        } else {
+            (ptr, data)
+        }
+    }
+
+    let _data = recursive_interpret(ast, ptr, data, false);
 }
 
 fn generate_javascript_from_ast(ast: Vec<Instruction>, base: bool) -> String {
